@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<style>
+</style>
+<link rel="stylesheet" type="text/css" href="style/d3.slider.css" />
+<link rel="stylesheet" type="text/css" href="style/main.css" />
+
+<body>
+<div class="wrapper">
+    <!--
+    <div class="hex-radius-slider"></div>
+    <div class="deviation-slider"></div>
+    <div class="ani-radius-slider"></div>
+    -->
+    <button class="omg">omg</button>
+<form id="query" onSubmit="return querySubmit()">
+<textarea id="querybox">select * from sar where dev='dev8-160' order by ts desc limit 10;</textarea>
+        <button id="query-submit">Submit query</button>
+    <select id="numericSelect"></select>
+    <select id="timeSelect"></select>
+    <select multiple id="otherSelect"></select>
+    </form>
+    <div id="vizselect" action="">
+    </div>
+    <div class="queryoutputdiv">
+        <textarea id="queryoutput"></textarea>
+    </div>
+    <div class="main-svg-wrapper"><svg class="main-svg"></svg></div>
+<div class="table-wrapper"><table class="querytable"><tr class="querytableheader"></table></table></div>
+</div>
+<script type="text/javascript" src="./js/d3.js"></script>
+<script type="text/javascript" src="./js/d3.tip.js"></script>
+<script type="text/javascript" src="./js/d3.slider.js"></script>
+<script type="text/javascript" src="./js/d3.hexbin.v0.min.js"></script>
+<script>
+
+d3.select("select#numericSelect").on("change", numericSelect)
+d3.select("select#timeSelect").on("change", timeSelect)
+
+var theData
+
+/*
+ *  Visualization Dispatch
+ */
+
+var whichViz = "timeseries"
+//var whichViz = "histogram"
+
+var availableViz = ["histogram", "timeseries"]
+
+f = d3.select("#vizselect").selectAll("input").data(availableViz)
+    .enter()
+f.append("input")
+    .attr("type", "radio")
+    .attr("name", "vizselect" ) 
+    .attr("value", function(d) { return d } ) 
+    .attr("id", function(d) { return "vizselect-" + d } ) 
+    .property("checked", function(d) { return d==whichViz })
+    .text(function(d) { return d } )
+f.insert("label")
+    .attr("for", function(d) { return "vizselect-" + d } )
+    .html( function(d) { return d + "<br/>"} )
+
+d3.selectAll("input[name=vizselect]").on("change", function() {
+    whichViz = this.value
+    dispatchViz()
+})
+
+console.log("vizselect")
+
+function dispatchViz() {
+    switch(whichViz) {
+        case "histogram":
+            histogramify()
+            break
+        case "timeseries":
+            timeseriesify()
+            break
+        default:
+            console.log("how did you get here?")
+    }
+}
+
+var numbericKeys,
+    timeKeys,
+    otherKeys;
+
+var margin  = { top: 30, right: 30, bottom: 100, left: 40 },
+    width = 800 - margin.left - margin.right,
+    height = 400 - margin.top - margin.bottom;
+
+var hexRadius = 10;
+
+var svgWrapper = d3.select("div.main-svg-wrapper")
+    .style({
+        height: height + margin.top + margin.bottom + 2 + "px",
+        width: width + margin.left + margin.right + 2 + "px"
+    })
+
+var svg = d3.select("svg.main-svg")
+    .attr("width", width + margin.left + margin.right)
+    .attr("height", height + margin.bottom + margin.top)
+    .append("g")
+    .attr("transform", "translate(" + margin.left + "," + margin.top + ")")
+var svgYAxis = function() { 
+    return svg.append("g")
+        .attr("class", "y axis")
+}
+var svgXAxis = function() { 
+    return svg.append("g")
+        .attr("class", "x axis")
+        .attr("transform", "translate(0," + height + ")") 
+}
+var xAxis = d3.svg.axis()
+
+var tip = d3.tip()
+    .attr("class", "d3-tip")
+    .html(function(d) { return d.length } )
+
+svg.call(tip)
+
+var formatCount = d3.format(",.0f")
+var x = d3.scale.linear()
+    .range([0, width])
+var y = d3.scale.linear()
+    .range([height, 0])
+
+var hist = d3.layout.histogram()
+
+var bar
+var numericPlot
+var timePlot
+var otherPlot
+
+var dateFormat = d3.time.format("%Y-%m-%d %X")
+var parseDate = dateFormat.parse
+
+function clearSvg() {
+    d3.selectAll(svg.node().children).remove()
+}
+
+function timeseriesify() {
+    clearSvg()
+    nf = function(d) { return d[numericPlot] }
+
+    data = theData.map(function(d) { return { time: new Date(parseDate(d[timePlot])), val: d[numericPlot] } } )
+
+    //data = d3.ascending(data, d3.bisector(function(a) { return a.time } ).right )
+data = data.sort(function(a, b) { return a.time.getTime() - b.time.getTime() } )
+    x = x.domain( d3.extent( data, function(d) { return d.time } ) )
+    y = y.domain( d3.extent( data, function(d) { return d.val } ) ) 
+
+    var date_format = function(t) {
+        return d3.time.format("%Y-%m-%d %X")(new Date(t));
+    }
+
+    xAxis = xAxis.scale(x).tickFormat(date_format)
+    yAxis = d3.svg.axis().scale(y).orient("left")
+
+    line = d3.svg.line()
+        .x(function(d) { return x(d.time) } )
+        .y(function(d) { return y(d.val) } )
+
+    svg.append("path")
+        .datum(data)
+        .attr("class", "line")
+        .attr("d", line)
+
+    svgYAxis().call(yAxis)
+    xa = svgXAxis().call(xAxis)
+    xa.selectAll("text")
+      .attr("transform", function(d) {
+         return "translate(" + this.getBBox().width * -.4 + "," + this.getBBox().width*.4 + ")rotate(-45)";
+     });
+
+}
+
+function histogramify() {
+    //x = x.domain(d3.min(data, function(d) { return d[numericPlot] }))
+    clearSvg()
+    nf = function(d) { return d[numericPlot] }
+    x = x.domain( d3.extent(theData, nf) )
+
+    data = hist.bins(x.ticks()).value(nf)(theData)
+
+    y = y.domain( [ 0, d3.max(data, function(d) { return d.y }) ] )
+
+    bar = svg.selectAll(".bar")
+        .data(data)
+
+    bar.exit().remove()
+
+    newbar = bar.enter().append("g")
+        .attr("class", "bar")
+    newbar.append("rect")
+        .attr("class", "bar-rect")
+    newbar.append("text")
+        .attr("class", "bar-text")
+
+    bar.attr("transform", function(d) { return "translate(" + x(d.x) + "," + y(d.y) + ")"; })
+      .selectAll("rect.bar-rect")
+        .attr("x", 1)
+        .attr("width", x(x.domain()[0] + data[0].dx) - 1)
+        .attr("height", function(d) { return height - y(d.y); })
+
+    bar.selectAll("text.bar-text")
+        .attr("dy", ".75em")
+        .attr("y", 6)
+        .attr("x",  (x(x.domain()[0] + data[0].dx) - 1) / 2 )
+        .attr("text-anchor", "middle")
+        .text(function(d) { return formatCount(d.length); });
+
+    xAxis = d3.svg.axis().scale(x)
+    svgXAxis().call(xAxis)
+
+    // update y scale from bins?
+    //y = y.domain( [ d3.min(data, f), d3.max(data, f) ])
+}
+
+/* 
+ *  Data
+ */
+
+/*
+ *  Rendering
+ */
+
+function hexify() {
+    
+    color.domain([0, d3.max(hexbin(data), function(d) { return d.length } )])
+    hexagon = hexagon
+        .data(hexbin(data), function(d) { return d.i + "," + d.j; });
+    hexagon.exit().remove()
+    hexagon
+        .enter().append("path")
+        .on("mouseover", tip.show)
+        .on("mouseout", tip.hide)
+        .classed("hexagon", true)
+    hexagon
+        .attr("d", hexbin.hexagon( hexRadius ))
+        .attr("transform", function(d) { return "translate(" + d.x + "," + d.y + ")"; })
+        .style("fill", function(d) { return color(d.length); });
+}
+
+/*
+ *  Buttons
+ */
+
+function numericSelect(evt, val) {
+    numericPlot = this.value
+    dispatchViz()
+}
+
+function timeSelect(evt, val) {
+    timePlot = this.value
+    dispatchViz()
+}
+
+// called by onSubmit
+function querySubmit() {
+    
+    val = d3.select("#querybox").property("value")
+    h = d3.json("/sar/" + val, updateQueryResult)
+    console.log("lol")
+    svgWrapper
+        .classed("loading-overlay", true)
+        //.style({"background": 'url(/asset/ajax-loader.gif)'})
+    return false
+}
+
+function updateQueryResult(error, data) {
+    svgWrapper
+        .classed("loading-overlay", false)
+    if (error) return writeQueryOutput(error)
+    writeQueryOutput(JSON.stringify(data, space=true))
+    theData = data
+    keys = d3.keys(theData[0])
+
+    numericKeys = []
+    timeKeys = []
+    otherKeys = []
+    for ( i = 0; i < keys.length; i++ ) {
+    if (!isNaN(theData[0][keys[i]])) {
+            numericKeys.push(keys[i])
+        } else {
+            if ( new Date(theData[0][keys[i]]) != "Invalid Date") {
+                timeKeys.push(keys[i])
+            } else {
+                otherKeys.push(keys[i])
+            }
+        }
+    }
+
+    numSel = d3.select("select#numericSelect").selectAll("option").data( numericKeys, function(d) { return d; } )
+    numSel.exit().remove()
+    numSel.enter().append("option")
+        .attr("value", function(d) { return d; } )
+        .text( function(d) { return d; } )
+
+    timeSel = d3.select("select#timeSelect").selectAll("option").data( timeKeys, function(d) { return d; } )
+    timeSel.exit().remove()
+    timeSel.enter().append("option")
+        .attr("value", function(d) { return d; } )
+        .text( function(d) { return d; } )
+
+    otherSel = d3.select("select#otherSelect").selectAll("option").data( otherKeys, function(d) { return d; } )
+    otherSel.exit().remove()
+    otherSel.enter().append("option")
+        .attr("value", function(d) { return d; } )
+        .text( function(d) { return d; } )
+
+    if (numericKeys.indexOf(numericPlot) < 0)
+        numericPlot = numericKeys[0]
+    if (timeKeys.indexOf(timePlot) < 0)
+        timePlot = timeKeys[0]
+    d3.select("#vizselect").select("#vizselect-timeseries")
+        .property("disabled", !timeKeys.length)
+    console.log(d3.select("#vizselect").select("#vizselect-timeseries"))
+    console.log(timeKeys.length)
+    if (timeKeys.length == 0)
+    {
+        whichViz = "histogram"
+    }
+
+    updateTable()
+    dispatchViz()
+}
+
+function writeQueryOutput(txt) {
+    d3.select("#queryoutput").property("value", txt)
+}
+
+function updateTable() {
+    keys = d3.keys(theData[0])
+    tab = d3.select("div.table-wrapper")
+    tab.select("table.querytable").remove()
+    tab = tab.append("table").attr("class", "querytable")
+
+    ths = tab.append("tr").attr("class", "querytableheader")
+        .selectAll("th").data(keys)
+    ths.exit().remove()
+    ths.enter().append("th")
+        .text(function(d) { return d; })
+
+    tr = tab.selectAll("tr.tablerow").data(theData)
+    tr.exit().remove()
+    tr.enter().append("tr")
+            .attr("class", "tablerow")
+    td = tr.selectAll("td")
+        .data(function(d) { return keys.map( function(i){ return d[i] } ) })
+    td.exit().remove()
+    td.enter().append("td").text(function(d) { return d } )
+}
+
+function clickiness() {
+    if (!clickiness.clicked)
+    {
+        clickiness.clicked = true;
+        d3.timer(function() { 
+            randomizeData(); 
+            return !clickiness.clicked;
+        });
+    } else {
+        clickiness.clicked = false;
+    }
+}
+
+d3.select("button.omg").on("click", clickiness)
+
+/*
+ *  Sliders
+ */
+
+function hexRadiusSlide(evt, val) {
+    hexRadius = val;
+    hexbin.radius(hexRadius);
+    hexify();
+}
+hexRadiusSlider = d3.slider()
+    .value(hexRadius)
+    .min(5).max(30)
+    .on("slide", hexRadiusSlide)
+d3.select(".hex-radius-slider").attr("d", "hexRadius").call(hexRadiusSlider)
+
+querySubmit()
+
+</script>
+

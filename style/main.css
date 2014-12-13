@@ -1,0 +1,80 @@
+.wrapper {
+    width: 960px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.bar rect {
+  fill: steelblue;
+  shape-rendering: crispEdges;
+}
+
+.bar text {
+  fill: #fff;
+}
+
+.axis path, .axis line {
+  fill: none;
+  stroke: #000;
+  shape-rendering: crispEdges;
+}
+
+.main-svg {
+    border: 1px solid #aaaaaa;
+}
+
+.d3-tip {
+  line-height: 1;
+  font-weight: bold;
+  padding: 12px;
+  background: rgba(0, 0, 0, 0.8);
+  color: #fff;
+  border-radius: 2px;
+}
+
+/* Creates a small triangle extender for the tooltip */
+.d3-tip:after {
+  box-sizing: border-box;
+  display: inline;
+  font-size: 10px;
+  width: 100%;
+  line-height: 1;
+  color: rgba(0, 0, 0, 0.8);
+  content: "\25BC";
+  position: absolute;
+  text-align: center;
+}
+
+/* Style northward tooltips differently */
+.d3-tip.n:after {
+  margin: -1px 0 0 0;
+  top: 100%;
+  left: 0;
+}
+
+body {
+  font: 10px sans-serif;
+}
+
+#querybox, #queryoutput{
+    width: 500px;
+    height: 100px;
+}
+
+td {
+    Submitborder: 1px solid #d4d4d4;
+    Submitpadding: 5px;
+    Submitpadding-top: 7px;
+    Submitpadding-bottom: 7px;
+    Submitvertical-align: top;
+}
+
+.line {
+    fill: none;
+    stroke: steelblue;
+    stroke-width: 1.5px;
+}
+
+.loading-overlay {
+    background: url(/asset/ajax-loader.gif) no-repeat center;
+}
